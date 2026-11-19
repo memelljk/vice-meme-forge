@@ -3,7 +3,8 @@
 
 Scene: the make.fun ghost finally reaches Leonida. A sunset boulevard,
 a neon billboard for make.fun worked into the skyline, and the ghost
-itself riding a magenta convertible, sunglasses on, coin in hand.
+itself riding a magenta convertible, sunglasses pushed up on its head
+so both sparkle eyes stay visible, coin in hand.
 
 Deterministic: every coordinate and colour below is a fixed constant,
 so two runs produce byte-identical meme.png files.
@@ -164,41 +165,66 @@ def draw_car(draw: ImageDraw.ImageDraw) -> None:
 
 
 def draw_sunglasses(img: Image.Image) -> None:
-    """Black Vice City shades across the ghost's eyes, placed from the
-    ghost's own alpha bounding box so they land on its face."""
-    ghost = Image.open(GHOST_PATH).convert("RGBA")
-    bbox = ghost.getbbox()
+    """Black Vice City shades pushed UP on top of the ghost's head.
+
+    The ghost's defining feature is its two black four-pointed sparkle
+    eyes, so the shades must never cover them: they perch on the crown
+    instead. Placement is measured from the mark itself (1024px file):
+    the white head's crown tops out at y ~246, the sparkle eyes span
+    y ~365-462 with centres near x 460 and x 603. The lenses are centred
+    over the face at the crown line (fraction 0.262 of the box height),
+    which leaves the whole eye band below them clear, and the patch is
+    tilted a few degrees so the shades follow the head's curve.
+    """
     gx, gy, gw, gh = GHOST_BOX
-    # Scale the mark's own bbox into where it sits on the canvas.
-    sx = gw / ghost.width
-    sy = gh / ghost.height
-    bx0 = gx + bbox[0] * sx
-    bx1 = gx + bbox[2] * sx
-    by0 = gy + bbox[1] * sy
-    bw = bx1 - bx0
-    eye_y = by0 + 0.335 * (bbox[3] - bbox[1]) * sy
-    bar_h = 0.115 * (bbox[3] - bbox[1]) * sy
-    layer = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
-    # The mark's alpha bbox is the whole magenta disc; the ghost's head
-    # occupies only its middle band, so the bar spans that band, not
-    # the full disc width.
-    x0, x1 = bx0 + 0.235 * bw, bx1 - 0.235 * bw
-    bar_w = x1 - x0
-    d.rounded_rectangle([x0, eye_y, x1, eye_y + bar_h], radius=bar_h * 0.45,
-                        fill=(8, 8, 12, 255))
-    # Two lens shines.
-    for lx in (x0 + 0.12 * bar_w, x0 + 0.56 * bar_w):
-        d.line([lx, eye_y + bar_h * 0.62, lx + 0.16 * bar_w, eye_y + bar_h * 0.30],
-               fill=(140, 200, 235, 220), width=max(3, round(bar_h * 0.14)))
-    img.alpha_composite(layer)
+    cx = gx + 0.519 * gw          # face centre, between the two eyes
+    cy = gy + 0.262 * gh          # crown line, well above the eye tops
+    patch_w, patch_h = 260, 130
+    patch = Image.new("RGBA", (patch_w, patch_h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(patch)
+    lens_w, lens_h, gap = 82, 50, 16
+    total_w = lens_w * 2 + gap
+    x0 = (patch_w - total_w) // 2
+    y0 = (patch_h - lens_h) // 2
+    ink = (8, 8, 12, 255)
+    # Temple arms reaching back from the outer top corners.
+    d.line([x0 + 4, y0 + 10, x0 - 22, y0 - 4], fill=ink, width=9)
+    d.line([x0 + total_w - 4, y0 + 10, x0 + total_w + 22, y0 - 4],
+           fill=ink, width=9)
+    # Two lenses and the bridge between them.
+    for lx in (x0, x0 + lens_w + gap):
+        d.rounded_rectangle([lx, y0, lx + lens_w, y0 + lens_h],
+                            radius=16, fill=ink)
+    d.rectangle([x0 + lens_w - 2, y0 + 8, x0 + lens_w + gap + 2, y0 + 22],
+                fill=ink)
+    # Lens shines.
+    for lx in (x0, x0 + lens_w + gap):
+        d.line([lx + 14, y0 + lens_h - 12, lx + 34, y0 + 14],
+               fill=(140, 200, 235, 220), width=6)
+    patch = patch.rotate(-6, resample=Image.BICUBIC, center=(patch_w / 2, patch_h / 2))
+    img.alpha_composite(patch, (round(cx - patch_w / 2), round(cy - patch_h / 2)))
+
+
+def draw_steering_wheel(img: Image.Image) -> None:
+    """A simple steering wheel in front of the ghost, drawn over the
+    cabin so the ghost reads as the car's driver, hands to the wheel."""
+    draw = ImageDraw.Draw(img)
+    cx, cy, r = 556, 902, 60
+    ink = (16, 8, 24)
+    # Column down to the dashboard, then the wheel rim and hub.
+    draw.line([cx + 18, cy + 34, cx + 52, cy + 96], fill=ink, width=13)
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=ink, width=12)
+    draw.line([cx - r + 8, cy, cx + r - 8, cy], fill=ink, width=9)
+    draw.line([cx, cy, cx, cy + r - 8], fill=ink, width=9)
+    draw.ellipse([cx - 15, cy - 15, cx + 15, cy + 15], fill=ink)
 
 
 # Where the ghost ends up on the canvas: (x, y, w, h) after resizing.
-# Its bottom (y + h = 955) sinks below the car body's top edge (928),
-# so the car drawn afterwards hides the disc's lower arc and the ghost
-# reads as rising out of the cabin instead of floating behind the car.
-GHOST_BOX = (300, 455, GHOST_HEIGHT, GHOST_HEIGHT)
+# Its bottom (y + h = 990) sinks well below the car body's top edge
+# (928), so the car drawn afterwards hides the disc's whole lower arc
+# and the ghost reads as sitting down inside the convertible instead
+# of floating above it like a disc.
+GHOST_BOX = (300, 490, GHOST_HEIGHT, GHOST_HEIGHT)
 
 
 def place_ghost(img: Image.Image) -> None:
@@ -236,7 +262,8 @@ def build() -> None:
     place_ghost(img)          # ghost first...
     draw = ImageDraw.Draw(img)
     draw_car(draw)             # ...car over its base, so it sits inside
-    draw_sunglasses(img)
+    draw_steering_wheel(img)   # wheel in front of the ghost-driver
+    draw_sunglasses(img)       # shades perched on top of its head
     draw = ImageDraw.Draw(img)
     caption(draw, TOP_CAPTION, 62, 56)
     caption(draw, BOTTOM_CAPTION, 1132, 54)
